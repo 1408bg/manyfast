@@ -155,9 +155,6 @@ const sheetData = {};
 io.on("connection", (ws) => {
   const temp = ws.request.connection.remoteAddress.split(".");
   const clientIp = temp[temp.length-1];
-  if (ws.handshake.headers.origin == getIPAddress() || ws.handshake.headers.origin == "https://manyfast.injunweb.com/"){
-    ws.emit("clients", clients);
-  }
   ws.on("add", (data) => {
     clients.push(data);
     setTimeout(() => {
