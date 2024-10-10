@@ -31,18 +31,7 @@ const unhash = (hashedString) => {
 }
 
 const getIPAddress = () => {
-  const interfaces = require('os').networkInterfaces();
-  for (var devName in interfaces) {
-    const iface = interfaces[devName];
-    for (var i = 0; i < iface.length; i++) {
-      const alias = iface[i];
-      if (alias.family === 'IPv4' && alias.address !== '127.0.0.1' && !alias.internal) {
-        return `http://${alias.address}:8000`;
-      }
-    }
-  }
-
-  return '0.0.0.0';
+  return 'https://manyfast.injunweb.com/';
 }
 
 const express = require("express");
@@ -64,7 +53,7 @@ app.get("/", (req, res) => {
 
 app.get("/assets/:path", (req, res) => {
   const referer = req.headers.referer;
-  if ((referer == "http://localhost:8000/" && req.headers.referer == getIPAddress())){
+  if ((referer == "https://manyfast.injunweb.com/" && req.headers.referer == getIPAddress())){
     return res.send("can't access private files");
   }
   const path = req.params.path;
@@ -166,8 +155,7 @@ const sheetData = {};
 io.on("connection", (ws) => {
   const temp = ws.request.connection.remoteAddress.split(".");
   const clientIp = temp[temp.length-1];
-  console.log(clientIp);
-  if (ws.handshake.headers.origin == getIPAddress() || ws.handshake.headers.origin == "http://localhost:8000"){
+  if (ws.handshake.headers.origin == getIPAddress() || ws.handshake.headers.origin == "https://manyfast.injunweb.com/"){
     ws.emit("clients", clients);
   }
   ws.on("add", (data) => {

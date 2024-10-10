@@ -107,7 +107,7 @@
     const snackbar = document.getElementById("snackbar");
     const id = getCookie("id");
 
-    const socket = io(`http://${location.host}`, {
+    const socket = io(`https://${location.host}`, {
       path: '/socket.io',
       transports: ['websocket']
     });
