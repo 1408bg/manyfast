@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ManyFast/client</title>
+  <style>
+    *:not(#-sys-output *) { margin: 0 auto; padding: 0; }
+    ::-webkit-scrollbar { display: none; }
+    #-sys-modal { display: none; position: fixed; z-index: 1; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center; }
+    #-sys-modal > .modal-content { position: relative; background-color: white; padding: 20px; width: 80vw; max-width: 250px; text-align: center; }
+    #-sys-modal > .modal-content > .file-container { margin-top: 25px; display: flex; flex-direction: column; margin-bottom: 10px; }
+    .file-container > .download-file { text-decoration: none; }
+    .file-container > .download-file:hover { text-decoration: underline; }
+    .modal-content > #modal-close { color: red; cursor: pointer; }
+    .modal-content > #modal-close:hover { text-decoration: underline; }
+    #-sys-interface { display: flex; flex-direction: column; width: 100vw; height: 100vh; overflow: hidden; }
+    #-sys-interface > #gap { width: 100vw; height: 35px; }
+    #-sys-interface > h1 { text-align: center; margin-bottom: 10px; }
+    #-sys-interface > .code { border-collapse: collapse; width: 90vw; height: 100px; transition: all 0.5s; resize: none; padding-top: 10px; padding-left: 10px; border-radius: 10px; font-size: 20px; margin-bottom: 10px; }
+    #-sys-interface > .code:focus { height: 90vh; border: 1px solid skyblue; }
+    #-sys-interface > #result {  font-size: 12.8px; border: none; width: 100px; min-height: 45px; border-radius: 10px; transition: all 0.5s; cursor: pointer; }
+    #-sys-interface > #result:hover { font-size: 14px; }
+    #-sys-interface > #snackbar { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 2px; padding: 16px; position: fixed; z-index: 1; bottom: 30px; right: 30px; font-size: 17px; opacity: 0; transition: opacity 1.5s, bottom 1s; }
+    #-sys-interface > #snackbar.show { visibility: visible; bottom: 50px; opacity: 1; }
+    #-sys-interface > #back { position: fixed; top: 10px; left: 15px; color: white; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; border-radius: 4px; transition: all 0.3s; background-color: #cf4141; }
+    #-sys-interface > #back:hover { background-color: #bd2828; }
+    #-sys-interface > .dropdown { position: fixed; top: 10px; right: 15px; }
+    #-sys-interface > .dropdown > #dropdown-button { color: white; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; border-radius: 4px; transition: all 0.3s; background-color: #56cf41; }
+    #-sys-interface > .dropdown > #dropdown-button:hover { background-color: #46ad33; }
+    #-sys-interface > .dropdown > .dropdown-content { display: none; flex-direction: column; position: absolute; right: 0; top: 100%; background-color: #56cf41; border-radius: 4px; overflow: hidden; z-index: 1; }
+    #-sys-interface > .dropdown > .dropdown-content > button { color: white; background-color: #b8b8b8; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; transition: all 0.3s; width: 100%; }
+    #-sys-interface > .dropdown > .dropdown-content > button:hover { background-color: #7b7b7b; }
+    #-sys-output { width: 100vw; height: 100vh; position: fixed; top: 0px; background-color: white; display: none; overflow: auto; margin: 0px; }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="-sys-modal">
+    <div class="modal-content">
+      <b>Download</b>
+      <div class="file-container">
+        <a class="download-file" href="#" download="index.html">index.html <span class="file-size"></span></a>
+        <a class="download-file" href="#" download="style.css">style.css <span class="file-size"></span></a>
+        <a class="download-file" href="#" download="script.js">script.js <span class="file-size"></span></a>
+      </div>
+      <span id="modal-close">close</span>
+    </div>
+  </div>
+  <div id="-sys-interface">
+    <div id="gap"></div>
+    <button onclick="window.location.href = '/'" id="back">Back</button>
+    <div class="dropdown">
+      <button id="dropdown-button" onclick="toggleDropdown()">Options</button>
+      <div class="dropdown-content" id="dropdown-content">
+        <button onclick="save()">save</button>
+        <button onclick="load()">load</button>
+        <button onclick="download()">download</button>
+        <button onclick="showShareLink()">share</button>
+      </div>
+    </div>
+    <h1>index.html</h1>
+    <textarea id="html" class="code" spellcheck="false" oninput="updateHTML()"></textarea>
+    <h1>style.css</h1>
+    <textarea id="css" class="code" spellcheck="false" oninput="updateCSS()"></textarea>
+    <h1>script.js</h1>
+    <textarea id="js" class="code" spellcheck="false" oninput="updateJS()"></textarea>
+    <button onclick="make()" id="result">Show Result</button>
+    <div id="snackbar"></div>
+  </div>
+  <div id="-sys-output"></div>
+  <script>
+    const openBrackets = ['(', '{', '[', "\"", "'", "`"];
+    const closeBrackets = [')', '}', ']', "\"", "'", "`"];
+    const html = document.getElementById("html");
+    const css = document.getElementById("css");
+    const js = document.getElementById("js");
+    const output = document.getElementById("-sys-output");
+    const head = document.querySelector("head");
+    const snackbar = document.getElementById("snackbar");
+    const modal = document.getElementById('-sys-modal');
+    const dropdownContent = document.getElementById("dropdown-content");
+    const getCookie = (key) => {
+      let cookies = document.cookie.split('; ');
+      for (let cookie of cookies) {
+        let [cookieName, cookieValue] = cookie.split('=');
+        if (cookieName === key) {
+          return decodeURIComponent(cookieValue);
+        }
+      }
+      return null;
+    }
+    const id = getCookie("id");
+
+    const socket = io(`http://${location.host}`, {
+      path: '/socket.io',
+      transports: ['websocket']
+    });
+
+    const updateHTML = () => { socket.emit("html", `${id}^${html.value}`); }
+    const updateCSS = () => { socket.emit("css", `${id}^${css.value}`); }
+    const updateJS = () => { socket.emit("js", `${id}^${js.value}`); }
+
+    const save = () => {
+      socket.emit("save-web", {
+        "id" : id,
+        "html" : html.value,
+        "css" : css.value,
+        "js" : js.value
+      });
+      showSnackbar("saved");
+    };
+
+    const load = () => {
+      socket.emit("load-web", {
+        "id" : id
+      });
+      showSnackbar("loaded");
+    };
+
+    const countByte = (s) => {
+      const str = s;
+      var byte = -4;
+      var one_char = "";
+      for(var i = 0; i < str.length; i++) {
+        one_char = str.charAt(i);
+        byte += (escape(one_char).length > 4) ? 2 : 1;
+      }
+      return byte;
+    }
+
+    const download = () => {
+      const link = document.querySelectorAll(".download-file");
+      const byte = document.querySelectorAll(".file-size");
+      link[0].href = URL.createObjectURL(new Blob([html.value], { type : 'text/plain' }));
+      byte[0].innerText = countByte(html.value + "byte");
+      link[1].href = URL.createObjectURL(new Blob([css.value], { type : 'text/plain' }));
+      byte[1].innerText = countByte(css.value + "byte");
+      link[2].href = URL.createObjectURL(new Blob([js.value], { type : 'text/plain' }));
+      byte[2].innerText = countByte(js.value + "byte");
+      modal.style.display = 'flex';
+    };
+
+    const showShareLink = async () => {
+      fetch(`/share/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({type: "web"})
+      }).then(data=>data.text())
+      .then(link=>{
+        alert(`link created : ${link}\nLink is deleted after a minute`);
+        let tempInput = document.createElement("input")
+        tempInput.value = link;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+      });
+    }
+
+    const toggleDropdown = () => {
+      dropdownContent.style.display = dropdownContent.style.display === 'flex' ? 'none' : 'flex';
+    };
+
+    socket.on(`html${id}`, (data) => { html.value = data; });
+    socket.on(`css${id}`, (data) => { css.value = data; });
+    socket.on(`js${id}`, (data) => { js.value = data; });
+
+    const make = () => {
+      const prevStyle = output.querySelector("style");
+      const prevScript = head.querySelector(".script");
+      if (prevStyle) { output.removeChild(prevStyle); }
+      if (prevScript) { head.removeChild(prevScript); }
+      
+      output.innerHTML = html.value;
+
+      const styleTag = document.createElement("style");
+      styleTag.innerHTML = css.value;
+      output.appendChild(styleTag);
+
+      const scriptTag = document.createElement("script");
+      scriptTag.classList.add("script");
+      scriptTag.defer = true;
+      scriptTag.innerHTML = `(function() { ${js.value} })();`;
+      head.appendChild(scriptTag);
+
+      output.style.display = "block";
+      showSnackbar("'ESC' to exit");
+    };
+
+    const showSnackbar = (message) => {
+      snackbar.innerText = message;
+      snackbar.className = "show";
+      setTimeout(() => { snackbar.classList.remove("show"); }, 3000);
+    };
+
+    snackbar.addEventListener("click", () => { snackbar.classList.remove("show"); });
+    
+    document.getElementById("modal-close").addEventListener('click', function() {
+      modal.style.display = "none";
+      document.querySelectorAll(".download-file").forEach((e)=>{
+        URL.revokeObjectURL(e.href);
+        e.href = '#';
+      });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      snackbar.classList.remove("show");
+      if (event.key == "Escape") {
+        output.innerHTML = "";
+        output.style.display = "none";
+      }
+      if (document.activeElement.tagName.toLowerCase() == 'textarea') {
+        if (event.key === 'Tab'){
+          event.preventDefault();
+          const input = document.activeElement;
+          const start = input.selectionStart;
+          const value = input.value;
+          const end = input.selectionEnd;
+          input.value = value.substring(0, start) + '  ' + value.substring(end);
+          input.selectionStart = input.selectionEnd = start + 2;
+        }
+      }
+    });
+
+    document.querySelectorAll(".code").forEach((e)=>{
+      e.addEventListener("input", (event)=>{
+        if (event.inputType === 'deleteContentBackward') { return; }
+        const input = document.activeElement;
+        const start = input.selectionStart;
+        const value = input.value;
+        if (openBrackets.includes(value[start - 1])) {
+          const openIndex = openBrackets.indexOf(value[start - 1]);
+          const closeBracket = closeBrackets[openIndex];
+          input.value = value.substring(0, start) + closeBracket + value.substring(start);
+          input.selectionStart = input.selectionEnd = start;
+        }
+      });
+    });
+
+    load();
+  </script>
+</body>
+</html>

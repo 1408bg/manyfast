@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ManyFast/client</title>
+  <style>
+    ::-webkit-scrollbar { display: none; }
+    #-sys-modal { top: 0px; left: 0px; display: none; position: fixed; z-index: 1; width: 100vw; height: 100vh; background-color: rgba(0,0,0,0.4); justify-content: center; align-items: center; }
+    #-sys-modal > .modal-content { position: relative; background-color: white; padding: 20px; width: 80vw; max-width: 250px; text-align: center; }
+    #-sys-modal > .modal-content > .file-container { margin-top: 25px; display: flex; flex-direction: column; margin-bottom: 10px; align-items: center; justify-content: center; }
+    .file-container > .download-file { text-decoration: none; }
+    .file-container > .download-file:hover { text-decoration: underline; }
+    .modal-content > #modal-close { color: red; cursor: pointer; }
+    .modal-content > #modal-close:hover { text-decoration: underline; }
+    #-sys-interface { display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; } 
+    #-sys-interface > #back { position: fixed; top: 10px; left: 15px; color: white; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; border-radius: 4px; transition: all 0.3s; background-color: #cf4141; }
+    #-sys-interface > #back:hover { background-color: #bd2828; }
+    #-sys-interface > .dropdown { position: fixed; top: 10px; right: 15px; }
+    #-sys-interface > .dropdown > #dropdown-button { color: white; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; border-radius: 4px; transition: all 0.3s; background-color: #56cf41; }
+    #-sys-interface > .dropdown > #dropdown-button:hover { background-color: #46ad33; }
+    #-sys-interface > .dropdown > .dropdown-content { display: none; flex-direction: column; position: absolute; right: 0; top: 100%; background-color: #56cf41; border-radius: 4px; overflow: hidden; z-index: 1; }
+    #-sys-interface > .dropdown > .dropdown-content > button { color: white; background-color: #b8b8b8; border: none; padding: 8px 16px; text-align: center; text-decoration: none; display: inline-block; font-size: 14px; cursor: pointer; transition: all 0.3s; width: 100%; }
+    #-sys-interface > .dropdown > .dropdown-content > button:hover { background-color: #7b7b7b; }
+    #-sys-interface > #snackbar { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 2px; padding: 16px; position: fixed; z-index: 1; bottom: 30px; right: 30px; font-size: 17px; opacity: 0; transition: opacity 1.5s, bottom 1s; }
+    #-sys-interface > #snackbar.show { visibility: visible; bottom: 50px; opacity: 1; }
+    #-sys-interface > .code-wrapper { width: 100vw; display: flex; gap: 20px; justify-content: space-evenly; }
+    #-sys-interface > .code-wrapper h1 { text-align: center; }
+    #-sys-interface > .code-wrapper .code { resize: none; width: 40vw; height: 300px; border: solid 2px black; outline: none; transition: all 0.5s; font-size: 20px; }
+    #-sys-interface > .code-wrapper .code:focus { border: solid 2px skyblue; }
+    #-sys-interface > .button-wrapper { display: flex; justify-content: space-around; margin-top: 20px; }
+    .button-wrapper > button { color: white; border: none; transition: all 0.5s; width: 60px; height: 60px; border-radius: 15px; background-color: #56cf41; margin: 5px 25px; }
+    .button-wrapper > button:hover { background-color: #46ad33; }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div id="-sys-modal">
+    <div class="modal-content">
+      <b>Download</b>
+      <div class="file-container">
+        <a class="download-file" href="#" download="right.sheet">right.sheet <span class="file-size"></span></a>
+        <a class="download-file" href="#" download="left.sheet">left.sheet <span class="file-size"></span></a>
+      </div>
+      <span id="modal-close">close</span>
+    </div>
+  </div>
+  <div id="-sys-interface">
+    <button onclick="window.location.href = '/'" id="back">Back</button>
+    <div class="dropdown">
+      <button id="dropdown-button" onclick="toggleDropdown()">Options</button>
+      <div class="dropdown-content" id="dropdown-content">
+        <button onclick="save()">save</button>
+        <button onclick="load()">load</button>
+        <button onclick="download()">download</button>
+        <button onclick="showShareLink()">share</button>
+      </div>
+    </div>
+    <div class="code-wrapper">
+      <div>
+        <h1>right.sheet</h1>
+        <textarea class="code" id="right" spellcheck="false" oninput="updateRight()"></textarea>
+      </div>
+      <div>
+        <h1>left.sheet</h1>
+        <textarea class="code" id="left" spellcheck="false" oninput="updateLeft()"></textarea>
+      </div>
+    </div>
+    <div class="button-wrapper">
+      <button onclick="playRight()">Play<br>Right</button>
+      <button onclick="playLeft()">Play<br>Left</button>
+      <button onclick="playLeft(); playRight();">Play<br>All</button>
+    </div>
+    <div id="snackbar"></div>
+  </div>
+  <script>
+    const left = document.getElementById("left");
+    const right = document.getElementById("right");
+    const snackbar = document.getElementById("snackbar");
+    const modal = document.getElementById('-sys-modal');
+    const dropdownContent = document.getElementById("dropdown-content");
+    const sampleRate = 44100;
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    let count = 0;
+
+    const playTone = (frequency, duration, octave = 0) => {
+      const adjustedFrequency = frequency * Math.pow(2, octave);
+
+      const oscillator = audioContext.createOscillator();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(adjustedFrequency, audioContext.currentTime);
+      oscillator.connect(audioContext.destination);
+
+      setTimeout(() => {
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + duration);
+      }, count*1000);
+      count += duration;
+    }
+    const parseSheet = (sheet) => {
+      const lines = sheet.trim().split('\n');
+      const parsedNotes = [];
+      let baseDuration = 0.25;
+      let baseOctave = 0;
+
+      lines.forEach(line => {
+        if (line.startsWith('@')) {
+          const match = line.match(/@(\d+)/);
+          if (match) {
+            baseDuration = parseInt(match[1]) / 1000.0;
+          }
+          return;
+        }
+
+        if (line.startsWith('%')) {
+          const match = line.match(/%(-?\d+)/);
+          if (match) {
+            baseOctave = parseInt(match[1]);
+          }
+          return;
+        }
+
+        if (baseDuration === 0) {
+          throw new Error("Base duration not set before notes");
+        }
+
+        const notes = line.trim().split(/\s+/);
+        notes.forEach(note => {
+          if (!note) return;
+          let duration = baseDuration;
+          let octave = baseOctave;
+
+          const dashes = (note.match(/-/g) || []).length;
+          const slashes = (note.match(/\//g) || []).length;
+          const exclamations = (note.match(/!/g) || []).length;
+          const commas = (note.match(/,/g) || []).length;
+
+          duration += baseDuration * dashes - (baseDuration / 2) * slashes;
+          duration += baseDuration * commas;
+          octave += exclamations;
+
+          let noteName = note.replace(/[-/!,]/g, '');
+          if (noteName === '') noteName = ',';
+
+          parsedNotes.push({ note: noteName, duration, octave });
+        });
+      });
+
+      return parsedNotes;
+    }
+    const playAudio = async (parsedNotes) => {
+      showSnackbar("playing..");
+      count = 0;
+      parsedNotes.forEach(({ note, duration, octave }) => {
+        playTone(pitch[note], duration, octave);
+      });
+    }
+    const pitch = {
+      'do': 523, 'do#': 554, 're': 587, 're#': 622, 'mi': 659,
+      'fa': 698, 'fa#': 740, 'sol': 784, 'sol#': 831,
+      'la': 880, 'la#': 932, 'si': 988
+    };
+
+    const playLeft = () => {
+      const parsedNotes = parseSheet(left.value);
+      playAudio(parsedNotes);
+    }
+    const playRight = () => {
+      const parsedNotes = parseSheet(right.value);
+      playAudio(parsedNotes);
+    }
+
+    const getCookie = (key) => {
+      let cookies = document.cookie.split('; ');
+      for (let cookie of cookies) {
+        let [cookieName, cookieValue] = cookie.split('=');
+        if (cookieName === key) {
+          return decodeURIComponent(cookieValue);
+        }
+      }
+      return null;
+    }
+
+    const id = getCookie("id");
+
+    const socket = io(`http://${location.host}`, {
+      path: '/socket.io',
+      transports: ['websocket']
+    });
+
+    const updateLeft = () => { socket.emit("sheet-left", `${id}^${left.value}`); }
+    const updateRight = () => { socket.emit("sheet-right", `${id}^${right.value}`); }
+
+    const save = () => {
+      socket.emit("save-sheet", {
+        "id" : id,
+        "left" : left.value,
+        "right" : right.value
+      });
+      showSnackbar("saved");
+    }
+
+    const load = () => {
+      socket.emit("load-sheet", {
+        "id" : id,
+      });
+      showSnackbar("loaded");
+    }
+
+    const countByte = (s) => {
+      const str = s;
+      let byte = 0;
+      let one_char = "";
+      for(var i = 0; i < str.length; i++) {
+        one_char = str.charAt(i);
+        byte += (escape(one_char).length > 4) ? 2 : 1;
+      }
+      return byte;
+    }
+
+    const download = () => {
+      const link = document.querySelectorAll(".download-file");
+      const byte = document.querySelectorAll(".file-size");
+      link[0].href = URL.createObjectURL(new Blob([right.value], { type : 'text/plain' }));
+      console.log(right.value);
+      byte[0].innerText = countByte(right.value) + "byte";
+      link[1].href = URL.createObjectURL(new Blob([left.value], { type : 'text/plain' }));
+      byte[1].innerText = countByte(left.value) + "byte";
+      modal.style.display = 'flex';
+    };
+
+    const showShareLink = async () => {
+      fetch(`/share/${id}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({type: "sheet"})
+      }).then(data=>data.text())
+      .then(link=>{
+        alert(`link created : ${link}\nLink is deleted after a minute`);
+        let tempInput = document.createElement("input")
+        tempInput.value = link;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand("copy");
+        document.body.removeChild(tempInput);
+      });
+    }
+
+    const toggleDropdown = () => {
+      dropdownContent.style.display = dropdownContent.style.display === 'flex' ? 'none' : 'flex';
+    };
+
+    socket.on(`sheet-left${id}`, (data) => { left.value = data; });
+    socket.on(`sheet-right${id}`, (data) => { right.value = data; });
+
+    const showSnackbar = (message) => {
+      snackbar.innerText = message;
+      snackbar.className = "show";
+      setTimeout(() => { snackbar.classList.remove("show"); }, 3000);
+    };
+
+    snackbar.addEventListener("click", () => { snackbar.classList.remove("show"); });
+
+    document.getElementById("modal-close").addEventListener('click', function() {
+      modal.style.display = "none";
+      const e = document.querySelectorAll(".download-file");
+      URL.revokeObjectURL(e[0].href);
+      URL.revokeObjectURL(e[1].href);
+      e[0].href = '#';
+      e[1].href = '#';
+    });
+  </script>
+</body>
+</html>
