@@ -52,10 +52,6 @@ app.get("/", (req, res) => {
 });
 
 app.get("/assets/:path", (req, res) => {
-  const referer = req.headers.referer;
-  if ((referer == "https://manyfast.injunweb.com/" && req.headers.referer == getIPAddress())){
-    return res.send("can't access private files");
-  }
   const path = req.params.path;
   res.sendFile(__dirname + "/assets/" + path);
 });
@@ -155,6 +151,7 @@ const sheetData = {};
 io.on("connection", (ws) => {
   const temp = ws.request.connection.remoteAddress.split(".");
   const clientIp = temp[temp.length-1];
+  ws.emit("clients", clients);
   ws.on("add", (data) => {
     clients.push(data);
     setTimeout(() => {
