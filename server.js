@@ -31,7 +31,7 @@ const unhash = (hashedString) => {
 }
 
 const getIPAddress = () => {
-  return 'https://manyfast.injunweb.com/';
+  return 'https://manyfast.ijw.app/';
 }
 
 const express = require("express");
